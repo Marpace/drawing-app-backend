@@ -1,0 +1,6 @@
+.DS_Store
+.prettierignore
+
+/node_modules
+npm-debug.log
+/*.env
