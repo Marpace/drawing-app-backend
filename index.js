@@ -59,7 +59,7 @@ io.on("connection", (socket) => {
           guessedCorrectly: false,
           isCurrentPlayer: true,
           hasDrawn: false,
-          winner: false
+          isWinner: false
         }
       ],
       currentWord: null,
@@ -71,21 +71,20 @@ io.on("connection", (socket) => {
   }
 
   function handleValidateCode(code) {
-    let data = {};
-    if(!rooms[code]) {
-      data = {
-        isValid: false,
-        message: "Room code is invalid!"
-      }
-      console.log("Room code is invalid!")
+    let data = {
+      isValid: false,
+      message: ""
+    };
+    if(code === "") {
+      data.message = "Please enter a game code";
+    } 
+    else if(!rooms[code]) {
+      data.message = "Room code is invalid!";
     } 
     else if(rooms[code].playerCount >= 8) {
-      data = {
-        isValid: false,
-        message: "Room is full!"
-      };
-      console.log(`Room ${data.roomCode} is full`)
-    } else {
+      data.message = "Room is full!";
+    } 
+    else {
       data = {
         isValid: true,
         message: "",
@@ -114,7 +113,7 @@ io.on("connection", (socket) => {
       guessedCorrectly: false,
       isCurrentPlayer: false,
       hasDrawn: false, 
-      winner: false
+      isWinner: false
       }
     )
     io.in(room)
@@ -155,12 +154,13 @@ io.on("connection", (socket) => {
 
   function handleClearCanvas() {
     const room = socketRooms[socket.id];
-    socket.to(room).emit("clearCanvasResponse");
+    io.to(room).emit("clearCanvasResponse");
+    console.log("Canvas cleared")
   }
 
   function handleUndo(paths) {
     const room = socketRooms[socket.id];
-    socket.to(room).emit("undoResponse", paths)
+    socket.broadcast.emit("undoResponse", paths)
   }
 
   function handleGetWords() {
@@ -186,7 +186,7 @@ io.on("connection", (socket) => {
     const roomCode = socketRooms[socket.id];
     const room = rooms[roomCode];
     const playerGuessing = room.players.find(player => player.playerId === socket.id)
-    const currentWord = room.currentWord;
+    const currentWord = room.currentWord.toLowerCase();
     const currentPlayer = room.players.find(player => player.isCurrentPlayer === true)
     
     if(!room) {
@@ -204,12 +204,12 @@ io.on("connection", (socket) => {
     }); 
 
     //checking if player guessed correctly
-    if(guessedWord.trim() === currentWord) {
+    if(guessedWord.trim().toLowerCase() === currentWord) {
       console.log("player guessed correctly")
       playerGuessing.guessedCorrectly = true;
       playerGuessing.score += points;
       currentPlayer.score += 10;
-      io.to(playerGuessing.playerId).emit("guessedCorrectly") // removes input from player that guessed correctly
+      io.to(playerGuessing.playerId).emit("guessedCorrectly") 
     }
     const data = {
       content: guessedWord,
@@ -246,18 +246,21 @@ io.on("connection", (socket) => {
     drawingTimerInterval = setInterval(() => {
       drawingTimerCount--;
       if(drawingTimerCount <= 0) {
-        console.log("round over")
         clearInterval(drawingTimerInterval)
         roundOver(roomCode);
       }
     }, 1000)
   }
 
-
   function roundOver(roomCode) {
     console.log("round over");
     const room = rooms[roomCode]
     const currentPlayer = room.players.find(player => player.isCurrentPlayer === true);
+    if(!currentPlayer) {
+      console.log("Something went wrong. Could not find current player");
+      return;
+    }
+    clearInterval(drawingTimerInterval);
       
     //resetting values for next round and updating scores
     currentPlayer.hasDrawn = true;
@@ -265,7 +268,6 @@ io.on("connection", (socket) => {
     room.roundsPlayed++;
     room.currentWord = null;
     room.players.forEach(player => player.guessedCorrectly = false);
-    clearInterval(drawingTimerInterval);
 
     //choosing the next player to draw
     const newCurrentPlayer = rooms[roomCode].players.find(player => player.hasDrawn === false);
@@ -279,7 +281,7 @@ io.on("connection", (socket) => {
     // checking if all the players have played their turn
     if(!newCurrentPlayer) {
       data.gameOver = true;
-      data.winningPlayer.winner = true;
+      data.winningPlayer.isWinner = true;
       io.in(roomCode).emit("roundOver", data);
 
       //10 second timeout to view standings before going back to game lobby
