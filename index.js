@@ -143,7 +143,12 @@ io.on("connection", (socket) => {
     rooms[roomCode].gameOver = false;
     startChooseWordTimer(roomCode)
 
-    io.in(roomCode).emit("startGameResponse", adminPlayer);
+    const data = {
+      player: adminPlayer,
+      playerCount: rooms[roomCode].playerCount
+    }
+
+    io.in(roomCode).emit("startGameResponse", data);
     io.to(adminPlayer.playerId).emit("currentPlayer");
   }
 
@@ -252,6 +257,8 @@ io.on("connection", (socket) => {
     }, 1000)
   }
 
+
+
   function roundOver(roomCode) {
     console.log("round over");
     const room = rooms[roomCode]
@@ -316,7 +323,18 @@ io.on("connection", (socket) => {
     io.in(roomCode).emit("gameOver", room.players)
   }
 
-  socket.on("disconnect", () => console.log("socket: " + socket.id + " has disconnected"))
+  socket.on("disconnect", () => {
+    const roomCode = socketRooms[socket.id];
+    const room = rooms[roomCode];
+
+    if(!room) return;
+
+    room.playerCount--;
+    room.players.splice(room.players.indexOf(room.players.find(player => player.id === socket.id)), 1);
+
+    io.to(roomCode).emit("playerDisconnected", room.players)
+    console.log(room.players)
+  })
 
 })
 
