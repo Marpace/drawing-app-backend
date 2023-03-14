@@ -157,9 +157,10 @@ io.on("connection", (socket) => {
     socket.to(room).emit("drawingResponse", data)
   }
 
-  function handleClearCanvas() {
+  function handleClearCanvas(condition) {
     const room = socketRooms[socket.id];
-    io.to(room).emit("clearCanvasResponse");
+    if(condition === "cleared-by-player") io.to(room).emit("clearCanvasResponse");
+    else if (condition === "round-over") socket.emit("clearCanvasResponde")
     console.log("Canvas cleared")
   }
 
@@ -226,7 +227,7 @@ io.on("connection", (socket) => {
     
     //checking if all the players have guessed the word and if so, ending the round
     const correctGuesses = room.players.filter( player => player.guessedCorrectly === true).length
-    if( correctGuesses === room.playerCount - 1) roundOver(roomCode)
+    if( correctGuesses === room.playerCount - 1) roundOver(roomCode, false)
 
   } 
 
@@ -252,14 +253,14 @@ io.on("connection", (socket) => {
       drawingTimerCount--;
       if(drawingTimerCount <= 0) {
         clearInterval(drawingTimerInterval)
-        roundOver(roomCode);
+        roundOver(roomCode, false);
       }
     }, 1000)
   }
 
 
 
-  function roundOver(roomCode) {
+  function roundOver(roomCode, playerDisconnected) {
     console.log("round over");
     const room = rooms[roomCode]
     const currentPlayer = room.players.find(player => player.isCurrentPlayer === true);
@@ -282,7 +283,8 @@ io.on("connection", (socket) => {
     const data = {
       players: room.players,
       gameOver: false,
-      winningPlayer: room.players.sort((a, b) => b.score - a.score)[0]
+      winningPlayer: room.players.sort((a, b) => b.score - a.score)[0],
+      playerDisconnected: playerDisconnected
     }
 
     // checking if all the players have played their turn
@@ -302,7 +304,11 @@ io.on("connection", (socket) => {
       //10 second timeout to view standings before starting next round
       setTimeout(() => {
         newCurrentPlayer.isCurrentPlayer = true;
-        io.in(roomCode).emit("startGameResponse", newCurrentPlayer);
+        const startGameData = {
+          player: newCurrentPlayer,
+          playerCount: room.playerCount
+        }
+        io.in(roomCode).emit("startGameResponse", startGameData);
         io.to(newCurrentPlayer.playerId).emit("currentPlayer", newCurrentPlayer)
         startChooseWordTimer(roomCode)
       }, 10000);
@@ -326,11 +332,16 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const roomCode = socketRooms[socket.id];
     const room = rooms[roomCode];
-
     if(!room) return;
+    
+    const disconnectedPlayer = room.players.find(player => player.playerId === socket.id)
 
     room.playerCount--;
     room.players.splice(room.players.indexOf(room.players.find(player => player.id === socket.id)), 1);
+    
+    if(disconnectedPlayer.isCurrentPlayer) roundOver(roomCode, true);
+
+    if(disconnectedPlayer.admin) room.players[0].admin = true;
 
     io.to(roomCode).emit("playerDisconnected", room.players)
     console.log(room.players)
