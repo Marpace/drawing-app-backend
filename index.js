@@ -160,9 +160,21 @@ io.on("connection", (socket) => {
 
   function handleClearCanvas(condition) {
     const room = socketRooms[socket.id];
-    if(condition === "cleared-by-player") io.to(room).emit("clearCanvasResponse");
-    else if (condition === "round-over") socket.emit("clearCanvasResponde")
-    console.log("Canvas cleared")
+
+    switch (condition) {
+      case "cleared-by-player":
+        io.to(room).emit("clearCanvasResponse");
+        return;
+      case "round-over": 
+        socket.emit("clearCanvasResponse");
+        return;
+      default:
+        break;
+    }
+
+    // if(condition === "cleared-by-player") io.to(room).emit("clearCanvasResponse");
+    // else if (condition === "round-over") socket.emit("clearCanvasResponse")
+    // console.log("Canvas cleared")
   }
 
   function handleUndo(paths) {
@@ -289,7 +301,7 @@ io.on("connection", (socket) => {
       playerDisconnected: playerDisconnected
     }
 
-    // checking if all the players have played their turn
+    // checking if all the players have played their turn, thus game over
     if(!newCurrentPlayer) {
       data.gameOver = true;
       data.winningPlayer.isWinner = true;
@@ -297,7 +309,6 @@ io.on("connection", (socket) => {
 
       //10 second timeout to view standings before going back to game lobby
       setTimeout(() => {
-        socket.emit("clearCanvasResponse")
         gameOver(roomCode);
       }, 10000)
     } 
@@ -348,7 +359,6 @@ io.on("connection", (socket) => {
     if(disconnectedPlayer.admin) room.players[0].admin = true;
 
     io.to(roomCode).emit("playerDisconnected", room.players)
-    console.log(room.players)
   })
 
 })
