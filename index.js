@@ -64,6 +64,7 @@ io.on("connection", (socket) => {
       ],
       currentWord: null,
       roundsPlayed: 0,
+      drawingTime: null,
       gameOver: true
     }; 
     socket.join(roomCode)
@@ -138,7 +139,7 @@ io.on("connection", (socket) => {
     const roomCode = socketRooms[socket.id];
     const adminPlayer = rooms[roomCode].players.find(player => player.admin === true);
     adminPlayer.isCurrentPlayer = true;
-    drawingTimerCount = Number(roundDuration.match(/\d/g).join(""));
+    rooms[roomCode].drawingTime = Number(roundDuration.match(/\d/g).join(""));
 
     rooms[roomCode].gameOver = false;
     startChooseWordTimer(roomCode)
@@ -249,6 +250,7 @@ io.on("connection", (socket) => {
   }
 
   function startDrawingTimer(roomCode) {
+    drawingTimerCount = rooms[roomCode].drawingTime;
     drawingTimerInterval = setInterval(() => {
       drawingTimerCount--;
       if(drawingTimerCount <= 0) {
@@ -258,7 +260,7 @@ io.on("connection", (socket) => {
     }, 1000)
   }
 
-
+  
 
   function roundOver(roomCode, playerDisconnected) {
     console.log("round over");
@@ -295,6 +297,7 @@ io.on("connection", (socket) => {
 
       //10 second timeout to view standings before going back to game lobby
       setTimeout(() => {
+        socket.emit("clearCanvasResponse")
         gameOver(roomCode);
       }, 10000)
     } 
@@ -332,9 +335,10 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const roomCode = socketRooms[socket.id];
     const room = rooms[roomCode];
-    if(!room) return;
-    
+    if(!room ) return;
     const disconnectedPlayer = room.players.find(player => player.playerId === socket.id)
+    if(!disconnectedPlayer) return;
+
 
     room.playerCount--;
     room.players.splice(room.players.indexOf(room.players.find(player => player.id === socket.id)), 1);
