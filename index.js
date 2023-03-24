@@ -28,6 +28,8 @@ app.use(express.json());
 
 io.on("connection", (socket) => {
 
+  console.log(`client: ${socket.id} has connected`)
+
   socket.on("createGame", handleCreateGame);
   socket.on("validateCode", handleValidateCode)
   socket.on("joinGame", handleJoinGame);
@@ -158,19 +160,20 @@ io.on("connection", (socket) => {
     socket.to(room).emit("drawingResponse", data)
   }
 
-  function handleClearCanvas(condition) {
-    const room = socketRooms[socket.id];
+  function handleClearCanvas() {
+    const roomCode = socketRooms[socket.id];
+    io.in(roomCode).emit("clearCanvasResponse");
 
-    switch (condition) {
-      case "cleared-by-player":
-        io.to(room).emit("clearCanvasResponse");
-        return;
-      case "round-over": 
-        socket.emit("clearCanvasResponse");
-        return;
-      default:
-        break;
-    }
+    // switch (condition) {
+    //   case "cleared-by-player":
+    //     io.to(room).emit("clearCanvasResponse");
+    //     return;
+    //   case "round-over": 
+    //     socket.emit("clearCanvasResponse");
+    //     return;
+    //   default:
+    //     break;
+    // }
 
     // if(condition === "cleared-by-player") io.to(room).emit("clearCanvasResponse");
     // else if (condition === "round-over") socket.emit("clearCanvasResponse")
@@ -222,7 +225,7 @@ io.on("connection", (socket) => {
       }
     }); 
 
-    //checking if player guessed correctly
+    //checking if player who is guessing has guessed correctly
     if(guessedWord.trim().toLowerCase() === currentWord) {
       console.log("player guessed correctly")
       playerGuessing.guessedCorrectly = true;
@@ -327,6 +330,7 @@ io.on("connection", (socket) => {
         startChooseWordTimer(roomCode)
       }, 10000);
     }
+    io.in(roomCode).emit("clearCanvasResponse");
   }
 
   function gameOver(roomCode) {
@@ -344,6 +348,7 @@ io.on("connection", (socket) => {
   }
 
   socket.on("disconnect", () => {
+    console.log(`client: ${socket.id} has disconnected`)
     const roomCode = socketRooms[socket.id];
     const room = rooms[roomCode];
     if(!room ) return;
@@ -356,7 +361,7 @@ io.on("connection", (socket) => {
     
     if(disconnectedPlayer.isCurrentPlayer) roundOver(roomCode, true);
 
-    if(disconnectedPlayer.admin) room.players[0].admin = true;
+    if(disconnectedPlayer.admin && room.players.length > 1) room.players[0].admin = true;
 
     io.to(roomCode).emit("playerDisconnected", room.players)
   })
