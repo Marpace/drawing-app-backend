@@ -13,12 +13,13 @@ const socketRooms = {};
 const rooms = {};
 
 let chooseWordTimerInterval;
-let chooseWordTimerCount = 20;
+let chooseWordTimerCount;
 
 let drawingTimerInterval;
 let drawingTimerCount;
 
 let wordOptions = [];
+let paths = [];
 
 const port = process.env.PORT || 5000
 app.use(express.static('public'));
@@ -39,6 +40,7 @@ io.on("connection", (socket) => {
   socket.on("drawing", handleDrawing)
   socket.on("clearCanvas", handleClearCanvas);
   socket.on("undo", handleUndo);
+  socket.on("updatePaths", handleUpdatePaths);
 
   socket.on("getWords", handleGetWords);
   socket.on("wordChosen", handleWordChosen);
@@ -163,26 +165,17 @@ io.on("connection", (socket) => {
   function handleClearCanvas() {
     const roomCode = socketRooms[socket.id];
     io.in(roomCode).emit("clearCanvasResponse");
-
-    // switch (condition) {
-    //   case "cleared-by-player":
-    //     io.to(room).emit("clearCanvasResponse");
-    //     return;
-    //   case "round-over": 
-    //     socket.emit("clearCanvasResponse");
-    //     return;
-    //   default:
-    //     break;
-    // }
-
-    // if(condition === "cleared-by-player") io.to(room).emit("clearCanvasResponse");
-    // else if (condition === "round-over") socket.emit("clearCanvasResponse")
-    // console.log("Canvas cleared")
   }
 
-  function handleUndo(paths) {
-    const room = socketRooms[socket.id];
-    socket.broadcast.emit("undoResponse", paths)
+  function handleUndo() {
+    if(paths.length <= 0) return;
+    const roomCode = socketRooms[socket.id];
+    paths.splice(-1, 1)
+    io.in(roomCode).emit("undoResponse", paths)
+  }
+
+  function handleUpdatePaths(newPath) {
+    paths.push(newPath)
   }
 
   function handleGetWords() {
@@ -225,20 +218,25 @@ io.on("connection", (socket) => {
       }
     }); 
 
-    //checking if player who is guessing has guessed correctly
-    if(guessedWord.trim().toLowerCase() === currentWord) {
-      console.log("player guessed correctly")
-      playerGuessing.guessedCorrectly = true;
-      playerGuessing.score += points;
-      currentPlayer.score += 10;
-      io.to(playerGuessing.playerId).emit("guessedCorrectly") 
-    }
     const data = {
       content: guessedWord,
       author: playerGuessing.username,
-      guessedCorrectly: playerGuessing.guessedCorrectly
+      guessedCorrectly: false
+    }
+
+    //checking if player who is guessing has guessed correctly
+    if(guessedWord.trim().toLowerCase() === currentWord) {
+      console.log("player guessed correctly")
+      if(!playerGuessing.correctGuesses) {
+        playerGuessing.guessedCorrectly = true;
+        playerGuessing.score += points;
+        currentPlayer.score += 10;
+      }
+      data.guessedCorrectly = true;
+      io.to(playerGuessing.playerId).emit("guessedCorrectly") 
     }
     io.in(roomCode).emit("newGuessResponse", data)
+    io.in(roomCode).emit("updateGamePlayers", room.players)
     
     
     //checking if all the players have guessed the word and if so, ending the round
@@ -249,35 +247,29 @@ io.on("connection", (socket) => {
 
 
   // timer functions 
-  function startChooseWordTimer(roomCode) {
+  function startChooseWordTimer() {
+    chooseWordTimerCount = 20;
     chooseWordTimerInterval = setInterval(() => {
       chooseWordTimerCount-- 
-      if(chooseWordTimerCount <= 0) {
+      if(chooseWordTimerCount <= 0  && wordOptions.length > 0) {
         const chosenWord = wordOptions[Math.floor(Math.random() * 3)].word
-        clearInterval(chooseWordTimerInterval);
-        chooseWordTimerCount = 20;
-        io.in(roomCode).emit("wordChosenResponse", chosenWord)
-        startDrawingTimer(roomCode);
-        wordOptions = [];
-        rooms[roomCode].currentWord = chosenWord;
+        handleWordChosen(chosenWord);
       }
     }, 1000)
   }
 
   function startDrawingTimer(roomCode) {
+    paths = [];
     drawingTimerCount = rooms[roomCode].drawingTime;
     drawingTimerInterval = setInterval(() => {
       drawingTimerCount--;
-      if(drawingTimerCount <= 0) {
-        clearInterval(drawingTimerInterval)
-        roundOver(roomCode, false);
-      }
+      if(drawingTimerCount <= 0) roundOver(roomCode, false);
     }, 1000)
   }
 
-  
-
+  // When a round or the game end 
   function roundOver(roomCode, playerDisconnected) {
+    clearInterval(drawingTimerInterval);
     console.log("round over");
     const room = rooms[roomCode]
     const currentPlayer = room.players.find(player => player.isCurrentPlayer === true);
@@ -285,7 +277,6 @@ io.on("connection", (socket) => {
       console.log("Something went wrong. Could not find current player");
       return;
     }
-    clearInterval(drawingTimerInterval);
       
     //resetting values for next round and updating scores
     currentPlayer.hasDrawn = true;
@@ -347,6 +338,7 @@ io.on("connection", (socket) => {
     io.in(roomCode).emit("gameOver", room.players)
   }
 
+  //When the user navigates away from the page
   socket.on("disconnect", () => {
     console.log(`client: ${socket.id} has disconnected`)
     const roomCode = socketRooms[socket.id];
