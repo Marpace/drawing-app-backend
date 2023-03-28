@@ -72,7 +72,8 @@ io.on("connection", (socket) => {
       gameOver: true
     }; 
     socket.join(roomCode)
-    socket.emit("createGameResponse", {roomCode: roomCode, players: rooms[roomCode].players})
+    socket.emit("createGameResponse", rooms[roomCode].players)
+    socket.emit("isAdmin", roomCode);
   }
 
   function handleValidateCode(code) {
@@ -296,7 +297,7 @@ io.on("connection", (socket) => {
     }
 
     // checking if all the players have played their turn, thus game over
-    if(!newCurrentPlayer) {
+    if(!newCurrentPlayer || room.playerCount <= 1) {
       data.gameOver = true;
       data.winningPlayer.isWinner = true;
       io.in(roomCode).emit("roundOver", data);
@@ -346,15 +347,20 @@ io.on("connection", (socket) => {
     if(!room ) return;
     const disconnectedPlayer = room.players.find(player => player.playerId === socket.id)
     if(!disconnectedPlayer) return;
-
-
+    
     room.playerCount--;
-    room.players.splice(room.players.indexOf(room.players.find(player => player.id === socket.id)), 1);
     
     if(disconnectedPlayer.isCurrentPlayer) roundOver(roomCode, true);
+    
+    room.players.splice(room.players.indexOf(disconnectedPlayer), 1);
+    
 
-    if(disconnectedPlayer.admin && room.players.length > 1) room.players[0].admin = true;
-
+    if(disconnectedPlayer.admin && room.players.length >= 1) {
+      console.log(room.players)
+      const newAdmin = room.players.find(player => player.admin === false);
+      newAdmin.admin = true;
+      io.to(newAdmin.playerId).emit("isAdmin", roomCode)
+    }
     io.to(roomCode).emit("playerDisconnected", room.players)
   })
 
@@ -372,7 +378,6 @@ server.listen(port, () => {
 
 
 // TODO
-// set up game over
-// trim string passed as argument in handleSendMessage funtion
+// Fix options for new admin player, when admin player is disconnected 
+// come up with a name for the game
 // add hint
-// fix toom any words
